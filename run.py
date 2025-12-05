@@ -39,14 +39,14 @@ head = dmc.Paper(
                         dmc.Stack(
                             [
                                 dmc.Title(
-                                    "🍎 Fruit & Vegetable Affordability Dashboard",
+                                    "🍎 Fruit & Vegetable Cost Calculator",
                                     order=1,
                                     c='white',
                                     size='h2',
                                     fw=800,
                                 ),
                                 dmc.Text(
-                                    "Analyzing nutritional costs across household types and budget levels",
+                                    "Calculate actual costs to meet USDA recommendations",
                                     c='white',
                                     size='lg',
                                     opacity=0.9
@@ -63,7 +63,7 @@ head = dmc.Paper(
                         dmc.Paper(
                             [
                                 dmc.Group([
-                                    DashIconify(icon="mdi:fruit-cherries", width=24, color=colors['success']),
+                                    DashIconify(icon="mdi:shopping", width=24, color=colors['success']),
                                     dmc.Stack([
                                         dmc.Text("Total Items", size='xs', c='white', opacity=0.8),
                                         dmc.Title(str(summary_stats['total_items']), order=4, c='white')
@@ -78,8 +78,8 @@ head = dmc.Paper(
                                 dmc.Group([
                                     DashIconify(icon="mdi:currency-usd", width=24, color=colors['warning']),
                                     dmc.Stack([
-                                        dmc.Text("Avg Price/Cup", size='xs', c='white', opacity=0.8),
-                                        dmc.Title(f"${summary_stats['avg_price']:.2f}", order=4, c='white')
+                                        dmc.Text("Avg Cost/Edible Cup", size='xs', c='white', opacity=0.8),
+                                        dmc.Title(f"${summary_stats['avg_actual_cost']:.2f}", order=4, c='white')
                                     ], gap=0)
                                 ], gap='sm')
                             ],
@@ -89,10 +89,10 @@ head = dmc.Paper(
                         dmc.Paper(
                             [
                                 dmc.Group([
-                                    DashIconify(icon="mdi:home-group", width=24, color=colors['secondary']),
+                                    DashIconify(icon="mdi:percent", width=24, color=colors['secondary']),
                                     dmc.Stack([
-                                        dmc.Text("Household Types", size='xs', c='white', opacity=0.8),
-                                        dmc.Title(str(len(household_types)), order=4, c='white')
+                                        dmc.Text("Avg Edible Yield", size='xs', c='white', opacity=0.8),
+                                        dmc.Title(f"{summary_stats['avg_yield']:.1f}%", order=4, c='white')
                                     ], gap=0)
                                 ], gap='sm')
                             ],
@@ -102,10 +102,10 @@ head = dmc.Paper(
                         dmc.Paper(
                             [
                                 dmc.Group([
-                                    DashIconify(icon="mdi:chart-box", width=24, color=colors['primary']),
+                                    DashIconify(icon="mdi:trending-down", width=24, color=colors['primary']),
                                     dmc.Stack([
-                                        dmc.Text("Price Range", size='xs', c='white', opacity=0.8),
-                                        dmc.Title(summary_stats['price_range'], order=4, c='white')
+                                        dmc.Text("Most Affordable", size='xs', c='white', opacity=0.8),
+                                        dmc.Title(summary_stats['lowest_cost_item'], order=4, c='white', size='sm')
                                     ], gap=0)
                                 ], gap='sm')
                             ],
@@ -146,34 +146,31 @@ filter_section = dmc.Paper(
                     [
                         dmc.MultiSelect(
                             id='fruit-dropdown',
-                            label='Select Fruits',
-                            placeholder='Choose fruits...',
+                            label='Select Fruits/Vegetables',
+                            placeholder='Choose items...',
                             data=[{'value': fruit, 'label': fruit} for fruit in sorted(df['Fruit'].unique())],
                             value=[],
                             style={'width': 250},
                             clearable=True,
                             searchable=True,
-                            #icon=DashIconify(icon="fluent:food-apple-24-regular")
                         ),
                         dmc.Select(
-                            id='CupEquivalentUnit-dropdown',
-                            label='Cup Equivalent Unit',
-                            placeholder='All units',
-                            data=[{'value': unit, 'label': unit} for unit in sorted(df['CupEquivalentUnit'].unique())],
+                            id='form-dropdown',
+                            label='Form',
+                            placeholder='All forms',
+                            data=[{'value': form, 'label': form} for form in sorted(df['Form'].unique())],
                             value=None,
                             style={'width': 200},
                             clearable=True,
-                            #icon=DashIconify(icon="mdi:cup")
                         ),
                         dmc.Select(
                             id='price-category-dropdown',
                             label='Price Category',
                             placeholder='All categories',
-                            data=[{'value': cat, 'label': cat} for cat in sorted(df['CupEquivalentPriceCategory'].cat.categories)],
+                            data=[{'value': cat, 'label': cat} for cat in sorted(df['PriceCategory'].cat.categories)],
                             value=None,
                             style={'width': 200},
                             clearable=True,
-                            #icon=DashIconify(icon="mdi:tag")
                         ),
                         dmc.Button(
                             "Clear Filters",
@@ -205,13 +202,13 @@ custom_calculator = dmc.Paper(
             [
                 dmc.Group(
                     [
-                        dmc.Title("Custom Calculator", order=4, c=colors['text_primary']),
+                        dmc.Title("Household Calculator", order=4, c=colors['text_primary']),
                         DashIconify(icon="mdi:calculator", width=24, color=colors['primary'])
                     ],
                     justify='space-between'
                 ),
                 dmc.Text(
-                    "Configure your household for personalized cost estimates",
+                    "Calculate your household's fruit & vegetable costs",
                     size='sm', c=colors['text_secondary']
                 ),
                 dmc.Divider(),
@@ -221,31 +218,31 @@ custom_calculator = dmc.Paper(
                     [
                         dmc.NumberInput(
                             id='adults-input',
-                            label='Adults',
+                            label='Adults (19-50 years)',
                             min=0,
                             max=10,
                             value=2,
-                            description='Age 19+',
+                            description='USDA: 4-5 cups daily',
                             leftSection=DashIconify(icon="mdi:account"),
                             style={'width': '100%'}
                         ),
                         dmc.NumberInput(
                             id='children-input',
-                            label='Children',
+                            label='Children (4-13 years)',
                             min=0,
                             max=10,
                             value=2,
-                            description='Ages 2-13',
+                            description='USDA: 3-4 cups daily',
                             leftSection=DashIconify(icon="mdi:account-child"),
                             style={'width': '100%'}
                         ),
                         dmc.NumberInput(
                             id='teens-input',
-                            label='Teens',
+                            label='Teens (14-18 years)',
                             min=0,
                             max=10,
                             value=0,
-                            description='Ages 14-18',
+                            description='USDA: 4.5-5.5 cups daily',
                             leftSection=DashIconify(icon="mdi:account-supervisor"),
                             style={'width': '100%'}
                         ),
@@ -253,24 +250,32 @@ custom_calculator = dmc.Paper(
                     gap='sm'
                 ),
 
-                # Consumption preferences
+                # Budget preference
                 dmc.Stack(
                     [
                         dmc.Select(
-                            id='consumption-form',
-                            label='Preferred Form',
-                            value='Fresh',
-                            data=[{'value': form, 'label': form} for form in df['Form'].unique()],
-                            leftSection=DashIconify(icon="mdi:food-apple"),
+                            id='budget-tier',
+                            label='Budget Preference',
+                            value='avg',
+                            data=[
+                                {'value': 'low', 'label': 'Low Budget'},
+                                {'value': 'avg', 'label': 'Average'},
+                                {'value': 'high', 'label': 'High Budget'}
+                            ],
+                            leftSection=DashIconify(icon="mdi:currency-usd"),
                             style={'width': '100%'}
                         ),
-                        dmc.MultiSelect(
-                            id='picked-fruits',
-                            label='Preferred Fruits',
-                            placeholder='Select fruits...',
-                            data=[{'value': fruit, 'label': fruit} for fruit in sorted(df['Fruit'].unique())],
-                            value=['Apples', 'Bananas', 'Oranges'],
-                            searchable=True,
+                        dmc.Select(
+                            id='period-selector-calc',
+                            label='Time Period',
+                            value='Yearly',
+                            data=[
+                                {'value': 'Daily', 'label': 'Daily'},
+                                {'value': 'Weekly', 'label': 'Weekly'},
+                                {'value': 'Monthly', 'label': 'Monthly'},
+                                {'value': 'Yearly', 'label': 'Yearly'}
+                            ],
+                            leftSection=DashIconify(icon="mdi:calendar"),
                             style={'width': '100%'}
                         ),
                     ],
@@ -278,7 +283,7 @@ custom_calculator = dmc.Paper(
                 ),
 
                 dmc.Button(
-                    "Calculate Estimate",
+                    "Calculate Cost",
                     id='get-cost-estimate-btn',
                     variant='gradient',
                     gradient={'from': colors['primary'], 'to': colors['secondary']},
@@ -306,16 +311,16 @@ for col in household_costs_df.columns:
         'resizable': True,
     }
 
-    if any(x in col.lower() for x in ['cost', 'price']):
+    if any(x in col.lower() for x in ['cost']):
         col_def['type'] = 'numericColumn'
         col_def['valueFormatter'] = {'function': 'd3.format("$,.2f")(params.value)'}
-    elif any(x in col.lower() for x in ['cups', 'members', 'adults', 'children', 'teens']):
+    elif any(x in col.lower() for x in ['cups', 'members']):
         col_def['type'] = 'numericColumn'
         col_def['valueFormatter'] = {'function': 'd3.format(".1f")(params.value)'}
 
     column_defs.append(col_def)
 
-# Price categories tabs - Enhanced version
+# Price categories tabs
 price_categories_tabs = dmc.Paper(
     p=0,
     mb='xl',
@@ -325,31 +330,31 @@ price_categories_tabs = dmc.Paper(
         'borderRadius': '8px'
     },
     children=dmc.Tabs(
-        [
+        children=[
             dmc.TabsList(
-                [
-                    dmc.Tabs(
+                children=[
+                    dmc.TabsTab(
                         dmc.Group([
                             DashIconify(icon="mdi:currency-usd-off", width=18),
                             dmc.Text("Low Budget", size='sm')
                         ], gap='xs'),
                         value='low-budget'
                     ),
-                    dmc.Tabs(
+                    dmc.TabsTab(
                         dmc.Group([
                             DashIconify(icon="mdi:currency-usd", width=18),
                             dmc.Text("Budget", size='sm')
                         ], gap='xs'),
                         value='budget'
                     ),
-                    dmc.Tabs(
+                    dmc.TabsTab(
                         dmc.Group([
                             DashIconify(icon="mdi:currency-usd-circle", width=18),
                             dmc.Text("Moderate", size='sm')
                         ], gap='xs'),
                         value='moderate'
                     ),
-                    dmc.Tabs(
+                    dmc.TabsTab(
                         dmc.Group([
                             DashIconify(icon="mdi:currency-usd-circle-outline", width=18),
                             dmc.Text("High Budget", size='sm')
@@ -365,48 +370,18 @@ price_categories_tabs = dmc.Paper(
                 dmc.Stack([
                     dmc.Group([
                         dmc.Title("Low Budget Analysis", order=3, c=colors['text_primary']),
-                        dmc.Badge("Most Affordable", color="green", size='lg')
+                        dmc.Badge(f"${price_benchmarks['low']:.2f}/cup", color="green", size='lg')
                     ], justify='space-between'),
                     dmc.Text(
-                        "Items priced in the lowest 25% quartile - ideal for cost-conscious households",
+                        "Items priced in lowest 25% - most affordable options",
                         size='sm', c=colors['text_secondary']
                     ),
                     dmc.Divider(),
-                    dmc.Grid([
-                        dmc.GridCol(span=6, children=[
-                            dcc.Graph(
-                                id='low-budget-chart',
-                                figure=create_category_analysis('Low Budget'),
-                                style={'height': 400}
-                            )
-                        ]),
-                        dmc.GridCol(span=6, children=[
-                            dmc.Paper(
-                                p='md',
-                                style={'background': colors['background'], 'borderRadius': '8px'},
-                                children=[
-                                    dmc.Title("Key Insights", order=5, mb='md'),
-                                    dmc.Stack([
-                                        dmc.Group([
-                                            DashIconify(icon="mdi:check-circle", color=colors['success']),
-                                            dmc.Text("Average Price: ", size='sm', fw=500),
-                                            dmc.Text(f"${price_benchmarks['low']:.2f}/cup", size='sm')
-                                        ], gap='xs'),
-                                        dmc.Group([
-                                            DashIconify(icon="mdi:check-circle", color=colors['success']),
-                                            dmc.Text("Items Count: ", size='sm', fw=500),
-                                            dmc.Text(str(summary_stats['budget_items']), size='sm')
-                                        ], gap='xs'),
-                                        dmc.Group([
-                                            DashIconify(icon="mdi:check-circle", color=colors['success']),
-                                            dmc.Text("Savings Potential: ", size='sm', fw=500),
-                                            dmc.Text(f"{(1 - price_benchmarks['low']/price_benchmarks['avg'])*100:.0f}% vs average", size='sm')
-                                        ], gap='xs'),
-                                    ], gap='sm')
-                                ]
-                            )
-                        ])
-                    ], gutter='md')
+                    dcc.Graph(
+                        id='low-budget-chart',
+                        figure=create_category_analysis('Low Budget'),
+                        style={'height': 400}
+                    )
                 ], gap='md'),
                 value='low-budget'
             ),
@@ -416,10 +391,10 @@ price_categories_tabs = dmc.Paper(
                 dmc.Stack([
                     dmc.Group([
                         dmc.Title("Budget Analysis", order=3, c=colors['text_primary']),
-                        dmc.Badge("Value for Money", color="blue", size='lg')
+                        dmc.Badge(f"${price_benchmarks['budget']:.2f}/cup", color="blue", size='lg')
                     ], justify='space-between'),
                     dmc.Text(
-                        "Items priced between 25% and 50% quartile - balanced quality and affordability",
+                        "Items priced 25-50% - good value for money",
                         size='sm', c=colors['text_secondary']
                     ),
                     dmc.Divider(),
@@ -437,10 +412,10 @@ price_categories_tabs = dmc.Paper(
                 dmc.Stack([
                     dmc.Group([
                         dmc.Title("Moderate Analysis", order=3, c=colors['text_primary']),
-                        dmc.Badge("Premium Quality", color="orange", size='lg')
+                        dmc.Badge(f"${price_benchmarks['moderate']:.2f}/cup", color="orange", size='lg')
                     ], justify='space-between'),
                     dmc.Text(
-                        "Items priced between 50% and 75% quartile - higher quality options",
+                        "Items priced 50-75% - premium quality options",
                         size='sm', c=colors['text_secondary']
                     ),
                     dmc.Divider(),
@@ -458,10 +433,10 @@ price_categories_tabs = dmc.Paper(
                 dmc.Stack([
                     dmc.Group([
                         dmc.Title("High Budget Analysis", order=3, c=colors['text_primary']),
-                        dmc.Badge("Premium Selection", color="red", size='lg')
+                        dmc.Badge(f"${price_benchmarks['high']:.2f}/cup", color="red", size='lg')
                     ], justify='space-between'),
                     dmc.Text(
-                        "Items priced in the highest 25% quartile - premium and specialty items",
+                        "Items in highest 25% - premium and specialty items",
                         size='sm', c=colors['text_secondary']
                     ),
                     dmc.Divider(),
@@ -475,8 +450,43 @@ price_categories_tabs = dmc.Paper(
             ),
         ],
         value='low-budget',
-        orientation='horizontal'
+        orientation='horizontal',
+        id='price-tabs'
     )
+)
+
+# Cost summary section
+cost_summary_section = dmc.Paper(
+    p='md',
+    mb='xl',
+    style={
+        'background': colors['card_bg'],
+        'border': f'1px solid {colors["card_border"]}',
+        'borderRadius': '8px'
+    },
+    children=[
+        dmc.Stack([
+            dmc.Group([
+                dmc.Title("Annual Cost Summary", order=3, c=colors['text_primary']),
+                dmc.Select(
+                    id='period-selector-summary',
+                    value='Yearly',
+                    data=['Daily', 'Weekly', 'Monthly', 'Yearly'],
+                    style={'width': 150}
+                )
+            ], justify='space-between'),
+            dmc.Text(
+                "Cost to meet USDA daily recommendations for different household types",
+                size='sm', c=colors['text_secondary']
+            ),
+            dmc.Divider(),
+            dcc.Graph(
+                id='cost-summary-chart',
+                figure=create_cost_summary(),
+                style={'height': 500}
+            )
+        ], gap='md')
+    ]
 )
 
 # Main app layout
@@ -497,6 +507,52 @@ app.layout = dmc.MantineProvider(
                 
                 filter_section,
 
+                # Yield Impact Visualization
+                dmc.Paper(
+                    p='md',
+                    mb='xl',
+                    style={
+                        'background': colors['card_bg'],
+                        'border': f'1px solid {colors["card_border"]}',
+                        'borderRadius': '8px'
+                    },
+                    children=[
+                        dmc.Title("Impact of Edible Yield on Costs", order=3, mb='md'),
+                        dmc.Text(
+                            "How much edible yield affects the actual cost per cup",
+                            size='sm', c=colors['text_secondary'], mb='md'
+                        ),
+                        dcc.Graph(
+                            id='yield-analysis',
+                            figure=create_yield_analysis(),
+                            style={'height': 500}
+                        )
+                    ]
+                ),
+
+                # Price comparison
+                dmc.Paper(
+                    p='md',
+                    mb='xl',
+                    style={
+                        'background': colors['card_bg'],
+                        'border': f'1px solid {colors["card_border"]}',
+                        'borderRadius': '8px'
+                    },
+                    children=[
+                        dmc.Title("Retail Price vs Actual Edible Cost", order=3, mb='md'),
+                        dmc.Text(
+                            "Comparing retail prices to actual costs per edible cup (accounting for yield)",
+                            size='sm', c=colors['text_secondary'], mb='md'
+                        ),
+                        dcc.Graph(
+                            id='price-comparison',
+                            figure=create_price_comparison(),
+                            style={'height': 500}
+                        )
+                    ]
+                ),
+
                 # Main content grid
                 dmc.Grid(
                     [
@@ -514,7 +570,11 @@ app.layout = dmc.MantineProvider(
                                             'borderRadius': '8px'
                                         },
                                         children=[
-                                            dmc.Title("Price Distribution Analysis", order=3, mb='md'),
+                                            dmc.Title("Actual Cost Distribution", order=3, mb='md'),
+                                            dmc.Text(
+                                                "Distribution of actual costs per edible cup (yield-adjusted)",
+                                                size='sm', c=colors['text_secondary'], mb='md'
+                                            ),
                                             dcc.Graph(
                                                 id='price-distribution-chart',
                                                 figure=create_price_distribution(),
@@ -565,23 +625,8 @@ app.layout = dmc.MantineProvider(
                                 [
                                     custom_calculator,
 
-                                    # Affordability matrix
-                                    dmc.Paper(
-                                        p='md',
-                                        style={
-                                            'background': colors['card_bg'],
-                                            'border': f'1px solid {colors["card_border"]}',
-                                            'borderRadius': '8px'
-                                        },
-                                        children=[
-                                            dmc.Title("Affordability Matrix", order=3, mb='md'),
-                                            dcc.Graph(
-                                                id='affordability-matrix',
-                                                figure=create_affordability_matrix(),
-                                                style={'height': 350}
-                                            )
-                                        ]
-                                    ),
+                                    # Cost summary
+                                    cost_summary_section,
 
                                     # Data table
                                     dmc.Paper(
@@ -596,7 +641,7 @@ app.layout = dmc.MantineProvider(
                                                 dmc.Group([
                                                     dmc.Title("Household Cost Data", order=3),
                                                     dmc.Badge(
-                                                        f"{len(household_costs_df)} Households",
+                                                        f"{len(household_costs_df)} Household Types",
                                                         color="blue"
                                                     )
                                                 ], justify='space-between'),
@@ -631,20 +676,28 @@ app.layout = dmc.MantineProvider(
                     gutter='xl'
                 ),
 
-                # Footer
+                # Footer with data sources
                 dmc.Center(
-                    dmc.Text(
-                        [
-                            "Dashboard developed with ",
-                            dmc.Text("Plotly Dash", c=colors['primary'], fw=600),
-                            " • Data Source: Fruit and Vegetables Price Dataset • ",
-                            dmc.Text("USDA Recommendations", c=colors['secondary'], fw=600)
-                        ],
-                        size='sm',
-                        c=colors['text_secondary'],
-                        mt='xl',
-                        mb='md'
-                    )
+                    dmc.Stack([
+                        dmc.Text(
+                            [
+                                "Dashboard developed with ",
+                                dmc.Text("Plotly Dash", c=colors['primary'], fw=600),
+                                " • Dataset: Fruit and Vegetables Price Data"
+                            ],
+                            size='sm',
+                            c=colors['text_secondary']
+                        ),
+                        dmc.Text(
+                            [
+                                "USDA Recommendations Source: ",
+                                dmc.Text("MyPlate Dietary Guidelines 2020-2025", c=colors['secondary'], fw=600),
+                                " • All costs are per edible cup (yield-adjusted)"
+                            ],
+                            size='xs',
+                            c=colors['text_light']
+                        )
+                    ], gap=0, mt='xl', mb='md')
                 )
             ]
         )
@@ -655,32 +708,133 @@ app.layout = dmc.MantineProvider(
 @callback(
     Output('price-distribution-chart', 'figure'),
     Output('household-cost-chart', 'figure'),
+    Output('yield-analysis', 'figure'),
+    Output('price-comparison', 'figure'),
+    Output('cost-summary-chart', 'figure'),
     Input('fruit-dropdown', 'value'),
-    Input('CupEquivalentUnit-dropdown', 'value'),
+    Input('form-dropdown', 'value'),
     Input('price-category-dropdown', 'value'),
-    Input('period-selector', 'value')
+    Input('period-selector', 'value'),
+    Input('period-selector-summary', 'value')
 )
-def update_charts(fruits, unit, price_category, period):
+def update_charts(fruits, form, price_category, period, summary_period):
     # Filter data
     filtered_df = df.copy()
 
     if fruits:
         filtered_df = filtered_df[filtered_df['Fruit'].isin(fruits)]
-    if unit:
-        filtered_df = filtered_df[filtered_df['CupEquivalentUnit'] == unit]
+    if form:
+        filtered_df = filtered_df[filtered_df['Form'] == form]
     if price_category:
-        filtered_df = filtered_df[filtered_df['CupEquivalentPriceCategory'] == price_category]
+        filtered_df = filtered_df[filtered_df['PriceCategory'] == price_category]
 
-    # Update price distribution
+    # Update price distribution with filtered data
     fig1 = create_price_distribution()
     if len(filtered_df) > 0:
-        # Update histogram with filtered data
-        fig1.data[0].x = filtered_df['CupEquivalentPrice']
+        # Update the entire figure for filtered data
+        fig1 = go.Figure()
+        fig1.add_trace(go.Histogram(
+            x=filtered_df['ActualCostPerCup'],
+            nbinsx=40,
+            name='Cost Distribution',
+            marker_color=colors['primary'],
+            opacity=0.7,
+            histnorm='probability density'
+        ))
+        
+        # Add KDE curve for filtered data
+        if len(filtered_df) > 1:
+            kde = stats.gaussian_kde(filtered_df['ActualCostPerCup'].dropna())
+            x_range = np.linspace(filtered_df['ActualCostPerCup'].min(), 
+                                 filtered_df['ActualCostPerCup'].max(), 100)
+            y_range = kde(x_range)
+            
+            fig1.add_trace(go.Scatter(
+                x=x_range, y=y_range,
+                mode='lines',
+                name='Density',
+                line=dict(color=colors['danger'], width=2),
+                yaxis='y2'
+            ))
+
+        # Update layout
+        fig1.update_layout(
+            title='Filtered Cost Distribution',
+            xaxis_title='Cost per Edible Cup ($)',
+            yaxis_title='Frequency',
+            yaxis2=dict(
+                title='Density',
+                overlaying='y',
+                side='right',
+                showgrid=False
+            ),
+            hovermode='x unified',
+            plot_bgcolor=colors['card_bg'],
+            paper_bgcolor=colors['background'],
+            font=dict(color=colors['text_primary']),
+            showlegend=True,
+            legend=dict(
+                orientation='h',
+                yanchor='bottom',
+                y=1.02,
+                xanchor='right',
+                x=1
+            )
+        )
 
     # Update household cost comparison
     fig2 = create_household_cost_comparison(period)
+    
+    # Update yield analysis
+    fig3 = create_yield_analysis()
+    if len(filtered_df) > 0:
+        fig3.data[0].x = filtered_df['Yield'] * 100
+        fig3.data[0].y = filtered_df['ActualCostPerCup']
+        fig3.data[0].customdata = np.column_stack((
+            filtered_df['RetailPrice'],
+            filtered_df['RetailPriceUnit'],
+            filtered_df['CupEquivalentSize'],
+            filtered_df['CupEquivalentUnit']
+        ))
+    
+    # Update price comparison
+    fig4 = create_price_comparison()
+    if len(filtered_df) > 0:
+        # Get top 15 most affordable from filtered data
+        sorted_filtered = filtered_df.sort_values('ActualCostPerCup').head(15)
+        if len(sorted_filtered) > 0:
+            fig4.data[0].x = sorted_filtered['Fruit']
+            fig4.data[0].y = sorted_filtered['RetailPrice']
+            fig4.data[1].x = sorted_filtered['Fruit']
+            fig4.data[1].y = sorted_filtered['ActualCostPerCup']
+            fig4.data[0].customdata = np.column_stack((
+                sorted_filtered['Form'],
+                sorted_filtered['RetailPriceUnit']
+            ))
+            fig4.data[1].customdata = np.column_stack((
+                sorted_filtered['Form'],
+                sorted_filtered['Yield'] * 100
+            ))
+    
+    # Update cost summary
+    fig5 = create_cost_summary()
+    # Update period in cost summary if needed
+    if summary_period != 'Yearly':
+        period_map = {'Daily': 1, 'Weekly': 7, 'Monthly': 30, 'Yearly': 365}
+        multiplier = period_map.get(summary_period, 365)
+        
+        # Update the bars for the new period
+        for i, tier in enumerate(['low', 'avg', 'high']):
+            costs = household_costs_df[f'{tier}_Yearly_Cost'] / 365 * multiplier
+            fig5.data[i].y = costs.values
+            fig5.data[i].text = costs.apply(lambda x: f'${x:,.0f}').values
+        
+        fig5.update_layout(
+            title=f'{summary_period} Cost to Meet USDA Recommendations',
+            yaxis_title=f'{summary_period} Cost ($)'
+        )
 
-    return fig1, fig2
+    return fig1, fig2, fig3, fig4, fig5
 
 @callback(
     Output('cost-estimate-results', 'children'),
@@ -688,59 +842,65 @@ def update_charts(fruits, unit, price_category, period):
     State('adults-input', 'value'),
     State('children-input', 'value'),
     State('teens-input', 'value'),
-    State('consumption-form', 'value'),
-    State('picked-fruits', 'value')
+    State('budget-tier', 'value'),
+    State('period-selector-calc', 'value')
 )
-def calculate_cost_estimate(n_clicks, adults, children, teens, form, fruits):
+def calculate_cost_estimate(n_clicks, adults, children, teens, budget_tier, period):
     if n_clicks is None:
         return dmc.Alert(
-            "Configure your household and click 'Calculate Estimate' to see results",
+            "Configure your household and click 'Calculate Cost' to see results",
             color="blue",
             variant="light"
         )
 
-    # Calculate daily cups
-    household_config = {'adults': adults, 'children': children, 'teens': teens}
-    cups_data = calculate_daily_cups(household_config)
-
-    # Filter prices based on selected fruits and form
-    if fruits:
-        fruit_prices = df[df['Fruit'].isin(fruits)]
-        if form:
-            fruit_prices = fruit_prices[fruit_prices['Form'] == form]
-        avg_price = fruit_prices['CupEquivalentPrice'].mean()
-    else:
-        avg_price = price_benchmarks['avg']
-
-    # Calculate costs
-    daily_cost = cups_data['total'] * avg_price
-    weekly_cost = daily_cost * 7
-    monthly_cost = daily_cost * 30
-    yearly_cost = daily_cost * 365
+    # Calculate USDA daily cups needed
+    adult_cups = 4.5  # Average for adults
+    child_cups = 3.5  # Average for children
+    teen_cups = 5.0   # Average for teens
+    
+    daily_cups_needed = (adults * adult_cups) + (children * child_cups) + (teens * teen_cups)
+    
+    # Get price for selected budget tier
+    price = price_benchmarks[budget_tier]
+    
+    # Calculate costs for different periods
+    period_map = {'Daily': 1, 'Weekly': 7, 'Monthly': 30, 'Yearly': 365}
+    multiplier = period_map.get(period, 365)
+    
+    period_cost = daily_cups_needed * price * multiplier
 
     return dmc.Stack([
         dmc.Group([
             dmc.Paper([
-                dmc.Text("Daily Cost", size='xs', c=colors['text_secondary']),
-                dmc.Title(f"${daily_cost:.2f}", order=4, c=colors['text_primary'])
+                dmc.Text("Daily Cups Needed", size='xs', c=colors['text_secondary']),
+                dmc.Title(f"{daily_cups_needed:.1f} cups", order=4, c=colors['text_primary'])
             ], p='md', style={'flex': 1, 'background': colors['background'], 'borderRadius': '8px'}),
             dmc.Paper([
-                dmc.Text("Weekly Cost", size='xs', c=colors['text_secondary']),
-                dmc.Title(f"${weekly_cost:.2f}", order=4, c=colors['text_primary'])
+                dmc.Text(f"Cost per Cup ({budget_tier.title()})", size='xs', c=colors['text_secondary']),
+                dmc.Title(f"${price:.2f}", order=4, c=colors['primary'])
             ], p='md', style={'flex': 1, 'background': colors['background'], 'borderRadius': '8px'}),
         ], grow=True),
-        dmc.Group([
-            dmc.Paper([
-                dmc.Text("Monthly Cost", size='xs', c=colors['text_secondary']),
-                dmc.Title(f"${monthly_cost:.2f}", order=4, c=colors['text_primary'])
-            ], p='md', style={'flex': 1, 'background': colors['background'], 'borderRadius': '8px'}),
-            dmc.Paper([
-                dmc.Text("Yearly Cost", size='xs', c=colors['text_secondary']),
-                dmc.Title(f"${yearly_cost:.2f}", order=4, c=colors['text_primary'])
-            ], p='md', style={'flex': 1, 'background': colors['background'], 'borderRadius': '8px'}),
-        ], grow=True),
+        dmc.Paper([
+            dmc.Group([
+                DashIconify(icon="mdi:calendar", width=20, color=colors['primary']),
+                dmc.Stack([
+                    dmc.Text(f"{period} Cost", size='xs', c=colors['text_secondary']),
+                    dmc.Title(f"${period_cost:.2f}", order=3, c=colors['text_primary'])
+                ], gap=0)
+            ], gap='sm')
+        ], p='md', style={'background': colors['background'], 'borderRadius': '8px'}),
         dmc.Alert(
-            f"Estimated annual cost for {adults} adult(s), {children} child(ren), and {teens} teen(s): ${yearly_cost:,.0f}",
+            [
+                dmc.Text(f"Your household needs:", fw=500),
+                html.Br(),
+                dmc.Text(f"• {adults} adult(s): {adults * adult_cups:.1f} cups daily"),
+                html.Br(),
+                dmc.Text(f"• {children} child(ren): {children * child_cups:.1f} cups daily"),
+                html.Br() if teens > 0 else html.Div(),
+                dmc.Text(f"• {teens} teen(s): {teens * teen_cups:.1f} cups daily") if teens > 0 else html.Div(),
+                html.Br(),
+                dmc.Text(f"Total: {daily_cups_needed:.1f} cups daily to meet USDA recommendations")
+            ],
             title="Cost Summary",
             color="green",
             variant="light"
@@ -749,13 +909,62 @@ def calculate_cost_estimate(n_clicks, adults, children, teens, form, fruits):
 
 @callback(
     Output('fruit-dropdown', 'value'),
-    Output('CupEquivalentUnit-dropdown', 'value'),
+    Output('form-dropdown', 'value'),
     Output('price-category-dropdown', 'value'),
     Input('clear-filters', 'n_clicks'),
     prevent_initial_call=True
 )
 def clear_filters(n_clicks):
     return [], None, None
+
+# Callback for tab charts
+@callback(
+    Output('low-budget-chart', 'figure'),
+    Output('budget-chart', 'figure'),
+    Output('moderate-chart', 'figure'),
+    Output('high-budget-chart', 'figure'),
+    Input('price-tabs', 'value'),
+    Input('fruit-dropdown', 'value'),
+    Input('form-dropdown', 'value'),
+    Input('price-category-dropdown', 'value')
+)
+def update_tab_charts(selected_tab, fruits, form, price_category):
+    # Filter data based on dropdowns
+    filtered_df = df.copy()
+    
+    if fruits:
+        filtered_df = filtered_df[filtered_df['Fruit'].isin(fruits)]
+    if form:
+        filtered_df = filtered_df[filtered_df['Form'] == form]
+    if price_category:
+        filtered_df = filtered_df[filtered_df['PriceCategory'] == price_category]
+    
+    # Create figures for each category with filtered data
+    low_budget_fig = create_category_analysis('Low Budget')
+    budget_fig = create_category_analysis('Budget')
+    moderate_fig = create_category_analysis('Moderate')
+    high_budget_fig = create_category_analysis('High Budget')
+    
+    # Apply filters if data is filtered
+    if len(filtered_df) > 0:
+        for category, fig in [('Low Budget', low_budget_fig), 
+                             ('Budget', budget_fig), 
+                             ('Moderate', moderate_fig), 
+                             ('High Budget', high_budget_fig)]:
+            cat_df = filtered_df[filtered_df['PriceCategory'] == category]
+            if len(cat_df) > 0:
+                top_affordable = cat_df.nsmallest(10, 'ActualCostPerCup')
+                if len(top_affordable) > 0:
+                    fig.data[0].x = top_affordable['ActualCostPerCup']
+                    fig.data[0].y = top_affordable['Fruit']
+                    fig.data[0].customdata = np.column_stack((
+                        top_affordable['Form'],
+                        top_affordable['Yield'] * 100,
+                        top_affordable['RetailPrice'],
+                        top_affordable['RetailPriceUnit']
+                    ))
+    
+    return low_budget_fig, budget_fig, moderate_fig, high_budget_fig
 
 # JavaScript for theme toggle
 app.clientside_callback(
