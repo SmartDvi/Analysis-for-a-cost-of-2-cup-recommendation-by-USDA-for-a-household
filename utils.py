@@ -103,7 +103,7 @@ household_types = {
         'description': 'Single Adult',
         'usda_daily_cups': 5.0,  # USDA minimum for men 31-50
         'fruit_cups': 2.0,
-        'vegetable_cups': 3.0,
+        'vegetable_cups': 2.5,
         'members': ['men_31-50']
     },
     'couple_no_kids': {
@@ -113,7 +113,7 @@ household_types = {
         'description': 'Couple (No Children)',
         'usda_daily_cups': 9.0,  # 5 (men) + 4 (women)
         'fruit_cups': 3.5,       # 2 + 1.5
-        'vegetable_cups': 5.5,   # 3 + 2.5
+        'vegetable_cups': 5,   # 2.5 + 2.5
         'members': ['men_31-50', 'women_31-50']
     },
     'family_2adults_2children': {
@@ -124,7 +124,7 @@ household_types = {
         'description': 'Family (2 Adults, 2 Children)',
         'usda_daily_cups': 14.0,  # 5 + 4 + 3 + 2
         'fruit_cups': 5.5,        # 2 + 1.5 + 1.5 + 0.5
-        'vegetable_cups': 8.5,    # 3 + 2.5 + 1.5 + 1.5
+        'vegetable_cups': 8,    # 2.5 + 2.5 + 1.5 + 1.5
         'members': ['men_31-50', 'women_31-50', 'children_4-8', 'children_9-13']
     },
     'single_parent_2children': {
