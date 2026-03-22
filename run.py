@@ -1,11 +1,4 @@
-"""
-run.py — U.S. Household Fruit Cost Dashboard
-=============================================
-Usage
------
-  python run.py                                  # uses data/fruits.csv (default)
-  python run.py --csv /path/to/your/fruits.csv   # custom CSV location
-"""
+
 import argparse
 import os
 import sys
@@ -19,7 +12,7 @@ from dash_iconify import DashIconify
 from utils import (
     DAILY_CUPS_ADULT, DAYS_PER_YEAR, FORM_COLORS, HOUSEHOLD_SIZES,
     CSV_PATH,
-    best_value_per_base_fruit, build_dataframe, cheapest_items,
+    best_value_per_base_fruit, load_data, cheapest_items,
     cost_summary_by_form, form_distribution, household_annual_budget,
     most_expensive_items, price_range_stats,
 )
@@ -34,20 +27,26 @@ def _resolve_csv() -> str:
     env = os.environ.get("FRUITS_CSV")
     if env:
         return env
-    return CSV_PATH   # default from utils.py: <project>/data/fruits.csv
+    return CSV_PATH   # default from utils.py: remote USDA GitHub URL
+
+
+def _validate_csv(path: str) -> None:
+    """Exit with a helpful message if a local path doesn't exist."""
+    is_url = path.startswith("http://") or path.startswith("https://")
+    if not is_url and not os.path.exists(path):
+        sys.exit(
+            f"\n[ERROR] CSV not found: {path}\n"
+            f"  • Place your fruits.csv in a 'data/' folder next to run.py, OR\n"
+            f"  • Run:  python run.py --csv /full/path/to/fruits.csv\n"
+            f"  • OR set environment variable FRUITS_CSV=/path/to/fruits.csv\n"
+        )
+
 
 _csv_path = _resolve_csv()
-
-if not os.path.exists(_csv_path):
-    sys.exit(
-        f"\n[ERROR] CSV not found: {_csv_path}\n"
-        f"  • Place your fruits.csv in a 'data/' folder next to run.py, OR\n"
-        f"  • Run:  python run.py --csv /full/path/to/fruits.csv\n"
-        f"  • OR set environment variable FRUITS_CSV=/path/to/fruits.csv\n"
-    )
+_validate_csv(_csv_path)
 
 # ── Load data ──────────────────────────────────────────────────────────────
-df           = build_dataframe(_csv_path)
+df           = load_data(_csv_path)
 stats        = price_range_stats(df)
 form_summary = cost_summary_by_form(df)
 best_value   = best_value_per_base_fruit(df)
@@ -139,6 +138,7 @@ def fig_expensive(dark):
 def _hh_compute(strategy, cups):
     """Recompute household budget with a custom cups/day value."""
     import numpy as np
+    import pandas as pd
     prices = df["CupEquivalentPrice"].sort_values().values
     n = len(prices)
     if strategy == "budget":
@@ -159,7 +159,6 @@ def _hh_compute(strategy, cups):
             "Weekly_Cost":  round(annual / 52, 2),
             "Daily_Cost":   round(annual / DAYS_PER_YEAR, 2),
         })
-    import pandas as pd
     return pd.DataFrame(rows)
 
 
@@ -576,18 +575,11 @@ def render(tab, dark, strategy, sel_hh, sel_cols, cups):
 
     # ── HOUSEHOLDS ────────────────────────────────────────────
     elif tab == "households":
-        cups   = cups or 1.5
-        sel_hh = sel_hh or list(HOUSEHOLD_SIZES.keys())
+        cups     = cups or 1.5
+        sel_hh   = sel_hh or list(HOUSEHOLD_SIZES.keys())
         sel_cols = sel_cols or ["Annual","Monthly","Weekly","Daily"]
-        hh = _hh_compute(strategy, cups)
-        hh_disp = hh[hh["Household"].isin(sel_hh)]
-
-        col_disp_map = {
-            "Daily":   "Daily_Cost",
-            "Weekly":  "Weekly_Cost",
-            "Monthly": "Monthly_Cost",
-            "Annual":  "Annual_Cost",
-        }
+        hh       = _hh_compute(strategy, cups)
+        hh_disp  = hh[hh["Household"].isin(sel_hh)]
 
         content = dmc.Stack(gap="lg", children=[
             sec_hdr("Household Budget Projections",
@@ -840,6 +832,7 @@ def render(tab, dark, strategy, sel_hh, sel_cols, cups):
                       style={"background":t["surface"],"border":f"1px solid {t['border']}"},
                       children=[dcc.Graph(figure=fig_heatmap(dark),config=PLOT_CONFIG)]),
         ])
+
     # ── DATA SOURCE ───────────────────────────────────────────
     elif tab == "sources":
         content = dmc.Stack(gap="lg", children=[
@@ -1053,6 +1046,7 @@ def render(tab, dark, strategy, sel_hh, sel_cols, cups):
 
     return content, pw, hdr, nav, ftr
 
+
 # ── Persist strategy from SegmentedControl ────────────────
 @callback(
     Output("strategy-store","data"),
@@ -1088,6 +1082,7 @@ def save_cols(v):
 )
 def save_cups(v):
     return v or 1.5
+
 
 if __name__ == "__main__":
     app.run(debug=True, port=8050)
