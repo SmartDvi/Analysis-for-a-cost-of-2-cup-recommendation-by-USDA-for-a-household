@@ -136,21 +136,63 @@ def fig_expensive(dark):
     fig.update_yaxes(color=t["sub"],categoryorder="total descending")
     return fig
 
-def fig_household(strategy,dark):
-    t=tok(dark)
-    hh=household_annual_budget(df,strategy)
-    fig=go.Figure()
-    bars=[("Annual","Annual_Cost",t["primary"]),
-          ("Monthly","Monthly_Cost","#48aa68" if not dark else "#2ed581"),
-          ("Weekly","Weekly_Cost",t["accent"])]
-    for label,col,color in bars:
-        fig.add_trace(go.Bar(name=label,x=hh["Household"],y=hh[col],
-                             marker_color=color,marker_line_width=0,
-                             hovertemplate=f"<b>%{{x}}</b><br>{label}: <b>${{y:,.2f}}</b><extra></extra>"))
-    title_map={"budget":"Budget Mix (Cheapest 25%)","average":"Average Mix (Median)",
-               "premium":"Premium Mix (Costliest 25%)"}
-    fig.update_layout(**base_lo(t,f"Household Fruit Cost — {title_map[strategy]}"),barmode="group")
-    fig.update_yaxes(gridcolor=t["grid"],tickprefix="$",color=t["sub"])
+def _hh_compute(strategy, cups):
+    """Recompute household budget with a custom cups/day value."""
+    import numpy as np
+    prices = df["CupEquivalentPrice"].sort_values().values
+    n = len(prices)
+    if strategy == "budget":
+        ref = float(np.median(prices[: max(1, n // 4)]))
+    elif strategy == "premium":
+        ref = float(np.median(prices[3 * n // 4:]))
+    else:
+        ref = float(np.median(prices))
+    rows = []
+    for label, members in HOUSEHOLD_SIZES.items():
+        annual = round(cups * ref * DAYS_PER_YEAR * members, 2)
+        rows.append({
+            "Household":    label,
+            "Members":      members,
+            "PricePerCup":  round(ref, 4),
+            "Annual_Cost":  annual,
+            "Monthly_Cost": round(annual / 12, 2),
+            "Weekly_Cost":  round(annual / 52, 2),
+            "Daily_Cost":   round(annual / DAYS_PER_YEAR, 2),
+        })
+    import pandas as pd
+    return pd.DataFrame(rows)
+
+
+def fig_household(strategy, dark, cups=1.5, sel_hh=None, sel_cols=None):
+    t = tok(dark)
+    hh = _hh_compute(strategy, cups)
+    if sel_hh:
+        hh = hh[hh["Household"].isin(sel_hh)]
+    if not sel_cols:
+        sel_cols = ["Annual","Monthly","Weekly"]
+
+    col_map = {
+        "Annual":  ("Annual_Cost",  t["primary"]),
+        "Monthly": ("Monthly_Cost", "#48aa68" if not dark else "#2ed581"),
+        "Weekly":  ("Weekly_Cost",  t["accent"]),
+        "Daily":   ("Daily_Cost",   "#60a5fa" if dark else "#3b82f6"),
+    }
+    fig = go.Figure()
+    for label in sel_cols:
+        col, color = col_map[label]
+        fig.add_trace(go.Bar(
+            name=label, x=hh["Household"], y=hh[col],
+            marker_color=color, marker_line_width=0,
+            hovertemplate=f"<b>%{{x}}</b><br>{label}: <b>$%{{y:,.2f}}</b><extra></extra>",
+        ))
+    title_map = {"budget":"Budget Mix (Cheapest 25%)",
+                 "average":"Average Mix (Median)",
+                 "premium":"Premium Mix (Costliest 25%)"}
+    fig.update_layout(
+        **base_lo(t, f"Household Fruit Cost — {title_map.get(strategy,'Average')} · {cups} cups/day"),
+        barmode="group",
+    )
+    fig.update_yaxes(gridcolor=t["grid"], tickprefix="$", color=t["sub"])
     fig.update_xaxes(color=t["sub"])
     return fig
 
@@ -251,15 +293,26 @@ def fbadge(form,dark):
     return dmc.Badge(form,color=cm.get(form,"gray"),
                      variant="light" if not dark else "filled",size="xs")
 
-def hh_rows(strategy,dark):
-    t=tok(dark)
-    hh=household_annual_budget(df,strategy)
-    return [dmc.TableTr([_td(r["Household"],t,bold=True),
-                          _td(f"${r['Daily_Cost']:.2f}",t,mono=True),
-                          _td(f"${r['Weekly_Cost']:.2f}",t,mono=True),
-                          _td(f"${r['Monthly_Cost']:.2f}",t,mono=True),
-                          _td(f"${r['Annual_Cost']:,.2f}",t,mono=True,bold=True,color=t["primary"])])
-            for _,r in hh.iterrows()]
+def hh_rows(strategy, dark, cups=1.5, sel_hh=None, sel_cols=None):
+    t   = tok(dark)
+    hh  = _hh_compute(strategy, cups)
+    if sel_hh:
+        hh = hh[hh["Household"].isin(sel_hh)]
+    if not sel_cols:
+        sel_cols = ["Daily","Weekly","Monthly","Annual"]
+    col_map = {
+        "Daily":   ("Daily_Cost",   None),
+        "Weekly":  ("Weekly_Cost",  None),
+        "Monthly": ("Monthly_Cost", None),
+        "Annual":  ("Annual_Cost",  t["primary"]),
+    }
+    cells_per_row = lambda r: (
+        [_td(r["Household"], t, bold=True)] +
+        [_td(f"${r[col_map[c][0]]:,.2f}", t, mono=True,
+             bold=(c == "Annual"), color=(t["primary"] if c == "Annual" else None))
+         for c in sel_cols]
+    )
+    return [dmc.TableTr(cells_per_row(r)) for _, r in hh.iterrows()]
 
 def full_table(dark):
     t=tok(dark)
@@ -308,6 +361,9 @@ app.layout = dmc.MantineProvider(
                   href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap"),
         dcc.Store(id="dark-store", data=False),
         dcc.Store(id="strategy-store", data="average"),
+        dcc.Store(id="hh-households-store", data=list(HOUSEHOLD_SIZES.keys())),
+        dcc.Store(id="hh-cols-store",       data=["Annual","Monthly","Weekly","Daily"]),
+        dcc.Store(id="hh-cups-store",       data=1.5),
 
         dmc.Box(id="page-wrap", style={"background":LIGHT["bg"],"minHeight":"100vh"},children=[
 
@@ -358,6 +414,8 @@ app.layout = dmc.MantineProvider(
                                             leftSection=DashIconify(icon="mdi:table-search",width=15)),
                                 dmc.TabsTab("Heatmap",    value="heatmap",
                                             leftSection=DashIconify(icon="mdi:grid",width=15)),
+                                dmc.TabsTab("Data Source", value="sources",
+                                            leftSection=DashIconify(icon="mdi:database-outline",width=15)),
                             ]),
                         ]),
                     ])]),
@@ -369,10 +427,20 @@ app.layout = dmc.MantineProvider(
             dmc.Box(id="ftr",
                     style={"borderTop":f"1px solid {LIGHT['border']}","padding":"18px 0","marginTop":"16px"},
                     children=[dmc.Container(size="xl",children=[
-                        dmc.Text("Source: USDA ERS Fruit & Vegetable Prices Dataset  •  "
-                                 "Recommendation: 1.5 cups/day (USDA Dietary Guidelines 2020–2025)  •  "
-                                 "Annual cost = daily cups × $/cup × 365",
-                                 size="xs",c="dimmed",ta="center"),
+                        dmc.Group(justify="center",gap="xs",children=[
+                            DashIconify(icon="mdi:database-outline",width=14,
+                                        style={"color":"#888","marginTop":"2px"}),
+                            dmc.Text("Data: ",size="xs",c="dimmed"),
+                            dmc.Anchor(
+                                "USDA ERS Fruit & Vegetable Prices",
+                                href="https://www.ers.usda.gov/data-products/fruit-and-vegetable-prices/",
+                                target="_blank",
+                                size="xs",
+                                style={"color":"#2d8b6e","textDecoration":"underline"},
+                            ),
+                            dmc.Text(" (Updated Dec 2025)  •  1.5 cups/day per USDA Dietary Guidelines 2020–2025  •  Annual = daily cups × $/cup × 365",
+                                     size="xs",c="dimmed"),
+                        ]),
                     ])]),
         ]),
     ],
@@ -401,8 +469,11 @@ def toggle_dark(n,dark):
     Input("tabs","value"),
     Input("dark-store","data"),
     Input("strategy-store","data"),
+    Input("hh-households-store","data"),
+    Input("hh-cols-store","data"),
+    Input("hh-cups-store","data"),
 )
-def render(tab, dark, strategy):
+def render(tab, dark, strategy, sel_hh, sel_cols, cups):
     t = tok(dark)
     pw  = {"background":t["bg"],"minHeight":"100vh","transition":"background 0.3s"}
     hdr = {"background":t["header_grad"],"padding":"32px 0 24px"}
@@ -505,55 +576,204 @@ def render(tab, dark, strategy):
 
     # ── HOUSEHOLDS ────────────────────────────────────────────
     elif tab == "households":
-        hh=household_annual_budget(df,strategy)
-        content = dmc.Stack(gap="lg",children=[
+        cups   = cups or 1.5
+        sel_hh = sel_hh or list(HOUSEHOLD_SIZES.keys())
+        sel_cols = sel_cols or ["Annual","Monthly","Weekly","Daily"]
+        hh = _hh_compute(strategy, cups)
+        hh_disp = hh[hh["Household"].isin(sel_hh)]
+
+        col_disp_map = {
+            "Daily":   "Daily_Cost",
+            "Weekly":  "Weekly_Cost",
+            "Monthly": "Monthly_Cost",
+            "Annual":  "Annual_Cost",
+        }
+
+        content = dmc.Stack(gap="lg", children=[
             sec_hdr("Household Budget Projections",
-                    "Estimate annual fruit spending for different household sizes and shopping strategies.",t),
-            dmc.Paper(radius="md",p="lg",shadow="sm",
-                      style={"background":t["surface"],"border":f"1px solid {t['border']}"},
-                      children=[dmc.Group(justify="space-between",align="center",wrap="wrap",children=[
-                          dmc.Stack(gap=2,children=[
-                              dmc.Text("Shopping Strategy",fw=700,size="md",style={"color":t["text"]}),
-                              dmc.Text(
-                                  f"Budget ≈ ${household_annual_budget(df,'budget')['PricePerCup'].iloc[0]:.4f}/cup  ·  "
-                                  f"Average ≈ ${household_annual_budget(df,'average')['PricePerCup'].iloc[0]:.4f}/cup  ·  "
-                                  f"Premium ≈ ${household_annual_budget(df,'premium')['PricePerCup'].iloc[0]:.4f}/cup",
-                                  size="xs",c="dimmed"),
-                          ]),
-                          dmc.SegmentedControl(id="strategy-ctrl",value=strategy,
-                              data=[{"label":"🛒 Budget","value":"budget"},
-                                    {"label":"⚖️ Average","value":"average"},
-                                    {"label":"🌟 Premium","value":"premium"}],
-                              color="green",size="md"),
-                      ])]),
-            dmc.SimpleGrid(cols={"base":2,"sm":3,"lg":5},spacing="sm",children=[
-                dmc.Paper(radius="md",p="md",
-                          style={"background":t["surface2"],"border":f"1px solid {t['border']}",
-                                 "textAlign":"center"},
-                          children=[
-                              dmc.Text(r["Household"],size="xs",fw=700,c="dimmed"),
-                              dmc.Text(f"${r['Annual_Cost']:,.0f}",size="xl",fw=900,
-                                       style={"color":t["primary"],"fontVariantNumeric":"tabular-nums"}),
-                              dmc.Text("per year",size="xs",c="dimmed"),
-                              dmc.Text(f"${r['Monthly_Cost']:.2f}/mo",size="sm",fw=600,
-                                       style={"color":t["accent"]}),
-                          ])
-                for _,r in hh.iterrows()
+                    "Filter by household type, time period, and daily intake to model your exact scenario.", t),
+
+            # ── FILTER PANEL ─────────────────────────────────
+            dmc.Paper(radius="md", p="lg", shadow="sm",
+                      style={"background":t["surface"],"border":f"2px solid {t['primary']}"},
+                      children=[
+                dmc.Group(gap="xs", mb="sm", align="center", children=[
+                    DashIconify(icon="mdi:filter-variant", width=18,
+                                style={"color": t["primary"]}),
+                    dmc.Text("Filters", fw=800, size="md", style={"color": t["primary"]}),
+                    dmc.Badge("Interactive", color="green", variant="light", size="xs", radius="xl"),
+                ]),
+                dmc.SimpleGrid(cols={"base":1,"sm":2,"lg":4}, spacing="md", children=[
+
+                    # 1. Shopping Strategy
+                    dmc.Stack(gap=6, children=[
+                        dmc.Text("Shopping Strategy", size="xs", fw=700, c="dimmed",
+                                 style={"textTransform":"uppercase","letterSpacing":"0.06em"}),
+                        dmc.SegmentedControl(
+                            id="strategy-ctrl", value=strategy,
+                            data=[{"label":"🛒 Budget","value":"budget"},
+                                  {"label":"⚖️ Average","value":"average"},
+                                  {"label":"🌟 Premium","value":"premium"}],
+                            color="green", size="sm", fullWidth=True,
+                        ),
+                        dmc.Text(
+                            f"Budget: ${_hh_compute('budget',cups)['PricePerCup'].iloc[0]:.4f}/cup  ·  "
+                            f"Avg: ${_hh_compute('average',cups)['PricePerCup'].iloc[0]:.4f}/cup  ·  "
+                            f"Premium: ${_hh_compute('premium',cups)['PricePerCup'].iloc[0]:.4f}/cup",
+                            size="xs", c="dimmed",
+                        ),
+                    ]),
+
+                    # 2. Daily Cups Intake
+                    dmc.Stack(gap=6, children=[
+                        dmc.Group(justify="space-between", children=[
+                            dmc.Text("Daily Cups / Person", size="xs", fw=700, c="dimmed",
+                                     style={"textTransform":"uppercase","letterSpacing":"0.06em"}),
+                            dmc.Badge(f"{cups} cups/day", color="green", variant="light",
+                                      size="sm", radius="xl"),
+                        ]),
+                        dmc.Slider(
+                            id="cups-slider",
+                            value=cups, min=1.0, max=3.0, step=0.5,
+                            marks=[{"value":v,"label":f"{v}"} for v in [1.0,1.5,2.0,2.5,3.0]],
+                            color="green", size="sm",
+                        ),
+                        dmc.Text(
+                            "USDA recommends 1.5–2 cups/day for adults. "
+                            "Children: 1–1.5 cups. Active adults: 2–2.5 cups.",
+                            size="xs", c="dimmed",
+                        ),
+                    ]),
+
+                    # 3. Household Types
+                    dmc.Stack(gap=6, children=[
+                        dmc.Text("Household Types", size="xs", fw=700, c="dimmed",
+                                 style={"textTransform":"uppercase","letterSpacing":"0.06em"}),
+                        dmc.MultiSelect(
+                            id="hh-selector",
+                            data=[{"label":k,"value":k} for k in HOUSEHOLD_SIZES.keys()],
+                            value=sel_hh,
+                            placeholder="Select households…",
+                            clearable=True,
+                            searchable=False,
+                        ),
+                        dmc.Text(f"{len(sel_hh)} of {len(HOUSEHOLD_SIZES)} household types shown.",
+                                 size="xs", c="dimmed"),
+                    ]),
+
+                    # 4. Time Periods
+                    dmc.Stack(gap=6, children=[
+                        dmc.Text("Time Periods to Show", size="xs", fw=700, c="dimmed",
+                                 style={"textTransform":"uppercase","letterSpacing":"0.06em"}),
+                        dmc.MultiSelect(
+                            id="cols-selector",
+                            data=[{"label":c,"value":c} for c in ["Annual","Monthly","Weekly","Daily"]],
+                            value=sel_cols,
+                            placeholder="Select periods…",
+                            clearable=True,
+                            searchable=False,
+                        ),
+                        dmc.Text("Choose which time periods appear in the chart and table.",
+                                 size="xs", c="dimmed"),
+                    ]),
+                ]),
             ]),
-            dmc.Paper(radius="md",p="lg",shadow="sm",
-                      style={"background":t["surface"],"border":f"1px solid {t['border']}"},
-                      children=[dcc.Graph(figure=fig_household(strategy,dark),config=PLOT_CONFIG)]),
-            dmc.Paper(radius="md",p="lg",shadow="sm",
+
+            # ── KPI MINI-CARDS ────────────────────────────────
+            dmc.SimpleGrid(cols={"base":2,"sm":3,"lg":5}, spacing="sm", children=[
+                dmc.Paper(
+                    radius="md", p="md",
+                    style={"background":t["surface2"],"border":f"1px solid {t['border']}",
+                           "textAlign":"center",
+                           "opacity":"1.0" if r["Household"] in sel_hh else "0.35"},
+                    children=[
+                        dmc.Text(r["Household"], size="xs", fw=700, c="dimmed"),
+                        dmc.Text(f"${r['Annual_Cost']:,.0f}", size="xl", fw=900,
+                                 style={"color": t["primary"] if r["Household"] in sel_hh else t["sub"],
+                                        "fontVariantNumeric":"tabular-nums"}),
+                        dmc.Text("per year", size="xs", c="dimmed"),
+                        dmc.Text(f"${r['Monthly_Cost']:.2f}/mo", size="sm", fw=600,
+                                 style={"color": t["accent"]}),
+                        dmc.Text(f"${r['Daily_Cost']:.2f}/day", size="xs", c="dimmed"),
+                    ],
+                )
+                for _, r in hh.iterrows()
+            ]),
+
+            # ── CHART ─────────────────────────────────────────
+            dmc.Paper(radius="md", p="lg", shadow="sm",
                       style={"background":t["surface"],"border":f"1px solid {t['border']}"},
                       children=[
-                          dmc.Text("Breakdown Table",fw=700,mb="sm",style={"color":t["text"]}),
-                          dmc.Table(striped=True,highlightOnHover=True,children=[
-                              dmc.TableThead(dmc.TableTr([
-                                  _th("Household",t),_th("Daily",t),_th("Weekly",t),
-                                  _th("Monthly",t),_th("Annual",t)])),
-                              dmc.TableTbody(hh_rows(strategy,dark)),
-                          ]),
+                          dcc.Graph(
+                              figure=fig_household(strategy, dark, cups, sel_hh, sel_cols),
+                              config=PLOT_CONFIG,
+                          ),
                       ]),
+
+            # ── TABLE ─────────────────────────────────────────
+            dmc.Paper(radius="md", p="lg", shadow="sm",
+                      style={"background":t["surface"],"border":f"1px solid {t['border']}"},
+                      children=[
+                dmc.Group(justify="space-between", align="center", mb="sm", children=[
+                    dmc.Text("Breakdown Table", fw=700, style={"color":t["text"]}),
+                    dmc.Badge(
+                        f"{cups} cups/day · {strategy.title()} mix",
+                        color="green", variant="light", size="sm", radius="xl",
+                    ),
+                ]),
+                dmc.Table(
+                    striped=True, highlightOnHover=True,
+                    children=[
+                        dmc.TableThead(dmc.TableTr(
+                            [_th("Household", t)] +
+                            [_th(c, t) for c in sel_cols]
+                        )),
+                        dmc.TableTbody(
+                            hh_rows(strategy, dark, cups, sel_hh, sel_cols)
+                        ),
+                    ],
+                ),
+            ]),
+
+            # ── COST INSIGHT CARD ─────────────────────────────
+            dmc.Paper(radius="md", p="lg", shadow="sm",
+                      style={"background":t["surface2"],"border":f"1px solid {t['border']}"},
+                      children=[
+                dmc.Group(gap="sm", mb="xs", align="center", children=[
+                    DashIconify(icon="mdi:lightbulb-on-outline", width=20,
+                                style={"color": t["accent"]}),
+                    dmc.Text("What does this mean?", fw=700, style={"color":t["text"]}),
+                ]),
+                dmc.SimpleGrid(cols={"base":1,"sm":3}, spacing="md", children=[
+                    dmc.Stack(gap=2, children=[
+                        dmc.Text("Per day (1 adult)", size="xs", c="dimmed", fw=600),
+                        dmc.Text(
+                            f"${_hh_compute(strategy,cups).loc[0,'Daily_Cost']:.2f}",
+                            size="xl", fw=900, style={"color":t["primary"],
+                                                       "fontVariantNumeric":"tabular-nums"},
+                        ),
+                        dmc.Text(f"at {cups} cups · {strategy} mix", size="xs", c="dimmed"),
+                    ]),
+                    dmc.Stack(gap=2, children=[
+                        dmc.Text("Monthly (family of 4)", size="xs", c="dimmed", fw=600),
+                        dmc.Text(
+                            f"${_hh_compute(strategy,cups).loc[3,'Monthly_Cost']:,.2f}",
+                            size="xl", fw=900, style={"color":t["accent"],
+                                                       "fontVariantNumeric":"tabular-nums"},
+                        ),
+                        dmc.Text(f"at {cups} cups · {strategy} mix", size="xs", c="dimmed"),
+                    ]),
+                    dmc.Stack(gap=2, children=[
+                        dmc.Text("Annual savings (Budget vs Premium)", size="xs", c="dimmed", fw=600),
+                        dmc.Text(
+                            f"${abs(_hh_compute('premium',cups).loc[3,'Annual_Cost'] - _hh_compute('budget',cups).loc[3,'Annual_Cost']):,.2f}",
+                            size="xl", fw=900, style={"color":"#2d8b6e",
+                                                       "fontVariantNumeric":"tabular-nums"},
+                        ),
+                        dmc.Text("family of 4 · choosing cheapest vs premium fruits", size="xs", c="dimmed"),
+                    ]),
+                ]),
+            ]),
         ])
 
     # ── EXPLORER ──────────────────────────────────────────────
@@ -620,12 +840,220 @@ def render(tab, dark, strategy):
                       style={"background":t["surface"],"border":f"1px solid {t['border']}"},
                       children=[dcc.Graph(figure=fig_heatmap(dark),config=PLOT_CONFIG)]),
         ])
+    # ── DATA SOURCE ───────────────────────────────────────────
+    elif tab == "sources":
+        content = dmc.Stack(gap="lg", children=[
+            sec_hdr("Data Source & Methodology",
+                    "Full provenance, methodology, and citation information for this analysis.", t),
+
+            # Main source card
+            dmc.Paper(radius="md", p="xl", shadow="sm",
+                      style={"background":t["surface"],"border":f"2px solid {t['primary']}"},
+                      children=[
+                dmc.Group(gap="md", align="flex-start", children=[
+                    dmc.ThemeIcon(
+                        DashIconify(icon="mdi:government-building", width=28),
+                        size=56, radius="md", variant="light", color="green",
+                    ),
+                    dmc.Stack(gap=6, style={"flex":1}, children=[
+                        dmc.Text("USDA Economic Research Service (ERS)",
+                                 fw=900, size="lg", style={"color":t["text"]}),
+                        dmc.Text("Fruit and Vegetable Prices Dataset",
+                                 fw=600, size="md", style={"color":t["primary"]}),
+                        dmc.Group(gap="xs", children=[
+                            dmc.Badge("Updated Dec 9, 2025", color="green", variant="filled", size="sm"),
+                            dmc.Badge("2023 Retail Scanner Data", color="teal",  variant="light", size="sm"),
+                            dmc.Badge("150+ Items", color="blue",  variant="light", size="sm"),
+                        ]),
+                        dmc.Text(
+                            "USDA ERS estimated average prices for more than 150 commonly consumed "
+                            "fresh and processed fruits and vegetables. Prices are reported per edible "
+                            "cup equivalent — the unit of measurement used in Federal recommendations "
+                            "for fruit and vegetable consumption.",
+                            size="sm", c="dimmed", mt=4,
+                        ),
+                        dmc.Anchor(
+                            dmc.Group(gap=4, align="center", children=[
+                                DashIconify(icon="mdi:open-in-new", width=14),
+                                dmc.Text("www.ers.usda.gov/data-products/fruit-and-vegetable-prices",
+                                         size="sm"),
+                            ]),
+                            href="https://www.ers.usda.gov/data-products/fruit-and-vegetable-prices/",
+                            target="_blank",
+                            style={"color": t["primary"]},
+                        ),
+                    ]),
+                ]),
+            ]),
+
+            # Methodology grid
+            dmc.SimpleGrid(cols={"base":1,"md":2}, spacing="md", children=[
+
+                dmc.Paper(radius="md", p="lg", shadow="sm",
+                          style={"background":t["surface"],"border":f"1px solid {t['border']}"},
+                          children=[
+                    dmc.Group(gap="sm", mb="md", align="center", children=[
+                        dmc.ThemeIcon(DashIconify(icon="mdi:calculator-variant",width=18),
+                                      size="md",radius="xl",variant="light",color="green"),
+                        dmc.Text("Price Calculation Methodology", fw=700, style={"color":t["text"]}),
+                    ]),
+                    dmc.Stack(gap="sm", children=[
+                        dmc.Paper(p="sm", radius="sm",
+                                  style={"background":t["surface2"],"border":f"1px solid {t['border']}"},
+                                  children=[
+                            dmc.Text("Weight-based items (per pound)", fw=600, size="sm",
+                                     style={"color":t["primary"]}),
+                            dmc.Code(
+                                "CupPrice = (RetailPrice × CupSize) / Yield",
+                                style={"fontSize":"0.8rem","display":"block","marginTop":"4px"},
+                            ),
+                        ]),
+                        dmc.Paper(p="sm", radius="sm",
+                                  style={"background":t["surface2"],"border":f"1px solid {t['border']}"},
+                                  children=[
+                            dmc.Text("Volume-based items / juices (per pint)", fw=600, size="sm",
+                                     style={"color":t["primary"]}),
+                            dmc.Code(
+                                "CupPrice = RetailPrice × (CupSize / 16) / Yield",
+                                style={"fontSize":"0.8rem","display":"block","marginTop":"4px"},
+                            ),
+                            dmc.Text("1 pint = 16 fl oz; cup-equiv = 8 fl oz",
+                                     size="xs", c="dimmed", mt=4),
+                        ]),
+                        dmc.Paper(p="sm", radius="sm",
+                                  style={"background":t["surface2"],"border":f"1px solid {t['border']}"},
+                                  children=[
+                            dmc.Text("Annual household cost", fw=600, size="sm",
+                                     style={"color":t["primary"]}),
+                            dmc.Code(
+                                "Annual = CupPrice × cups/day × 365 × members",
+                                style={"fontSize":"0.8rem","display":"block","marginTop":"4px"},
+                            ),
+                        ]),
+                    ]),
+                ]),
+
+                dmc.Paper(radius="md", p="lg", shadow="sm",
+                          style={"background":t["surface"],"border":f"1px solid {t['border']}"},
+                          children=[
+                    dmc.Group(gap="sm", mb="md", align="center", children=[
+                        dmc.ThemeIcon(DashIconify(icon="mdi:database-settings",width=18),
+                                      size="md",radius="xl",variant="light",color="teal"),
+                        dmc.Text("Data Collection", fw=700, style={"color":t["text"]}),
+                    ]),
+                    dmc.Stack(gap="sm", children=[
+                        dmc.Group(align="flex-start", gap="sm", children=[
+                            DashIconify(icon="mdi:check-circle",width=16,
+                                        style={"color":t["primary"],"marginTop":"2px"}),
+                            dmc.Text("Retail scanner data from Circana (2013, 2016, 2020, 2022, 2023)",
+                                     size="sm", c="dimmed"),
+                        ]),
+                        dmc.Group(align="flex-start", gap="sm", children=[
+                            DashIconify(icon="mdi:check-circle",width=16,
+                                        style={"color":t["primary"],"marginTop":"2px"}),
+                            dmc.Text("Stores include: grocery, supermarkets, supercenters, "
+                                     "convenience, drug, and liquor stores nationwide.",
+                                     size="sm", c="dimmed"),
+                        ]),
+                        dmc.Group(align="flex-start", gap="sm", children=[
+                            DashIconify(icon="mdi:check-circle",width=16,
+                                        style={"color":t["primary"],"marginTop":"2px"}),
+                            dmc.Text("Prices are NOT suitable for year-to-year comparisons "
+                                     "due to coding changes and market evolution.",
+                                     size="sm", c="dimmed"),
+                        ]),
+                        dmc.Group(align="flex-start", gap="sm", children=[
+                            DashIconify(icon="mdi:check-circle",width=16,
+                                        style={"color":t["primary"],"marginTop":"2px"}),
+                            dmc.Text("Updated annually, subject to data availability.",
+                                     size="sm", c="dimmed"),
+                        ]),
+                        dmc.Divider(style={"borderColor":t["border"]}, mt="xs"),
+                        dmc.Text("⚠ Disclaimer: Findings should not be attributed to Circana.",
+                                 size="xs", c="dimmed", fs="italic"),
+                    ]),
+                ]),
+            ]),
+
+            # Dietary Guidelines reference + related publications
+            dmc.Paper(radius="md", p="lg", shadow="sm",
+                      style={"background":t["surface"],"border":f"1px solid {t['border']}"},
+                      children=[
+                dmc.Group(gap="sm", mb="md", align="center", children=[
+                    dmc.ThemeIcon(DashIconify(icon="mdi:book-open-variant",width=18),
+                                  size="md",radius="xl",variant="light",color="orange"),
+                    dmc.Text("Dietary Guidelines & Related Research", fw=700, style={"color":t["text"]}),
+                ]),
+                dmc.SimpleGrid(cols={"base":1,"md":2}, spacing="sm", children=[
+                    *[
+                        dmc.Paper(p="sm", radius="sm",
+                                  style={"background":t["surface2"],"border":f"1px solid {t['border']}"},
+                                  children=[
+                            dmc.Group(gap="xs", align="flex-start", children=[
+                                DashIconify(icon="mdi:file-document-outline",width=16,
+                                            style={"color":t["primary"],"marginTop":"2px","flexShrink":"0"}),
+                                dmc.Anchor(title, href=href, target="_blank", size="sm",
+                                           style={"color":t["text"],"lineHeight":"1.4"}),
+                            ]),
+                        ])
+                        for title, href in [
+                            ("Satisfying Fruit & Vegetable Recommendations Possible for Under $3/Day (2024)",
+                             "https://www.ers.usda.gov/amber-waves/2024/september/satisfying-fruit-and-vegetable-recommendations-possible-for-under-3-a-day-data-analysis-shows/"),
+                            ("The Cost of Satisfying Fruit & Vegetable Recommendations in the Dietary Guidelines",
+                             "https://www.ers.usda.gov/publications/pub-details/?pubid=42904"),
+                            ("For SNAP Households, Fruit & Vegetable Affordability Is Partly a Question of Budgeting (2021)",
+                             "https://www.ers.usda.gov/amber-waves/2021/july/for-supplemental-nutrition-assistance-program-snap-households-fruit-and-vegetable-affordability-is-partly-a-question-of-budgeting/"),
+                            ("Americans Still Can Meet Fruit & Vegetable Guidelines for $2.10–$2.60/Day (2019)",
+                             "https://www.ers.usda.gov/amber-waves/2019/june/americans-still-can-meet-fruit-and-vegetable-dietary-guidelines-for-2-10-2-60-per-day/"),
+                            ("USDA Dietary Guidelines for Americans 2020–2025",
+                             "https://www.dietaryguidelines.gov/resources/2020-2025-dietary-guidelines-online-materials"),
+                            ("Download: All Fruits Average Prices (CSV)",
+                             "https://www.ers.usda.gov/media/6210/all-fruits-average-prices-csv-format.csv"),
+                        ]
+                    ],
+                ]),
+            ]),
+
+            # This dashboard's dataset summary
+            dmc.Paper(radius="md", p="lg", shadow="sm",
+                      style={"background":t["surface"],"border":f"1px solid {t['border']}"},
+                      children=[
+                dmc.Group(gap="sm", mb="md", align="center", children=[
+                    dmc.ThemeIcon(DashIconify(icon="mdi:chart-timeline-variant",width=18),
+                                  size="md",radius="xl",variant="light",color="violet"),
+                    dmc.Text("This Dashboard's Dataset", fw=700, style={"color":t["text"]}),
+                ]),
+                dmc.SimpleGrid(cols={"base":2,"sm":3,"lg":6}, spacing="md", children=[
+                    *[
+                        dmc.Stack(gap=2, align="center",
+                                  style={"textAlign":"center","padding":"12px",
+                                         "background":t["surface2"],
+                                         "borderRadius":"8px",
+                                         "border":f"1px solid {t['border']}"},
+                                  children=[
+                            dmc.Text(val, fw=900, size="xl",
+                                     style={"color":color,"fontVariantNumeric":"tabular-nums"}),
+                            dmc.Text(label, size="xs", c="dimmed"),
+                        ])
+                        for val, label, color in [
+                            (str(len(df)),              "Total Items",       t["primary"]),
+                            (str(df["Form"].nunique()),  "Preparation Forms", t["accent"]),
+                            (str(df["BaseFruit"].nunique()), "Base Fruits",  "#2d8b6e"),
+                            (f"${stats['min']:.4f}",    "Lowest $/Cup",     "#48aa68"),
+                            (f"${stats['max']:.4f}",    "Highest $/Cup",    "#e05252"),
+                            (f"${stats['median']:.4f}", "Median $/Cup",     t["primary"]),
+                        ]
+                    ],
+                ]),
+            ]),
+        ])
+
     else:
-        content = dmc.Text("Select a tab",c="dimmed")
+        content = dmc.Text("Select a tab", c="dimmed")
 
     return content, pw, hdr, nav, ftr
 
-# Update strategy store from SegmentedControl on Households tab
+# ── Persist strategy from SegmentedControl ────────────────
 @callback(
     Output("strategy-store","data"),
     Input("strategy-ctrl","value"),
@@ -633,6 +1061,33 @@ def render(tab, dark, strategy):
 )
 def save_strategy(v):
     return v
+
+# ── Persist household selector ────────────────────────────
+@callback(
+    Output("hh-households-store","data"),
+    Input("hh-selector","value"),
+    prevent_initial_call=True,
+)
+def save_hh(v):
+    return v or list(HOUSEHOLD_SIZES.keys())
+
+# ── Persist column selector ───────────────────────────────
+@callback(
+    Output("hh-cols-store","data"),
+    Input("cols-selector","value"),
+    prevent_initial_call=True,
+)
+def save_cols(v):
+    return v or ["Annual","Monthly","Weekly","Daily"]
+
+# ── Persist cups slider ───────────────────────────────────
+@callback(
+    Output("hh-cups-store","data"),
+    Input("cups-slider","value"),
+    prevent_initial_call=True,
+)
+def save_cups(v):
+    return v or 1.5
 
 if __name__ == "__main__":
     app.run(debug=True, port=8050)

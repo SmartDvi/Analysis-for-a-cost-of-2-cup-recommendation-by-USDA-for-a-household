@@ -27,7 +27,7 @@ _HERE    = os.path.dirname(os.path.abspath(__file__))
 CSV_PATH = os.path.join(
     _HERE,
     "data",
-    "/home/moritus-peters/Documents/Analysis-for-a-cost-of-2-cup-recommendation-by-USDA-for-a-household/data/fruits.csv",
+    "fruits.csv",
 )
 
 # ── CONSTANTS ───────────────────────────────────────────────────────────────
