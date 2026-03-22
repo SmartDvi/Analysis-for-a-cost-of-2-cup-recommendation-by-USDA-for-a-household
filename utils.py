@@ -1,10 +1,36 @@
+"""
+utils.py — Fruit Cost Analysis Utilities
+=========================================
+Data source: USDA ERS Fruit & Vegetable Prices CSV (fruits.csv).
+
+Cup-equivalent price formula
+────────────────────────────
+  • Weight-based items (RetailPriceUnit == "per pound"):
+        CupEquivalentPrice = (RetailPrice × CupEquivalentSize) / Yield
+
+  • Volume-based items (RetailPriceUnit == "per pint", i.e. juices):
+        CupEquivalentPrice = RetailPrice × (CupEquivalentSize / 16) / Yield
+        [1 pint = 16 fl oz; CupEquivalentSize is given in fluid ounces]
+
+Recommended daily intake: 1.5 cups/day (USDA Dietary Guidelines 2020-2025 midpoint).
+Annual cost uses a 365-day year.
+"""
+
+import os
 import pandas as pd
 import numpy as np
 
-# ── DATA SOURCE ──────────────────────────────────────────────────────────────
-CSV_PATH = 'https://raw.githubusercontent.com/SmartDvi/Analysis-for-a-cost-of-2-cup-recommendation-by-USDA-for-a-household/refs/heads/main/data/fruits.csv'
+# ── CSV PATH ────────────────────────────────────────────────────────────────
+# Resolves relative to the location of this file so the app works regardless
+# of which directory it is launched from.
+_HERE    = os.path.dirname(os.path.abspath(__file__))
+CSV_PATH = os.path.join(
+    _HERE,
+    "data",
+    "fruits.csv",
+)
 
-# ── CONSTANTS ────────────────────────────────────────────────────────────────
+# ── CONSTANTS ───────────────────────────────────────────────────────────────
 DAILY_CUPS_ADULT = 1.5          # USDA recommended midpoint for adults
 DAYS_PER_YEAR    = 365
 
@@ -31,27 +57,50 @@ _REQUIRED_COLS = {
 }
 
 
-# ── LOAD & CLEAN DATA ────────────────────────────────────────────────────────
-def load_data(path: str = CSV_PATH) -> pd.DataFrame:
-    """Load the fruit CSV, clean types, and compute derived columns."""
-    df = pd.read_csv(path)
+# ── LOAD & BUILD DATAFRAME ──────────────────────────────────────────────────
 
+def build_dataframe(csv_path: str = CSV_PATH) -> pd.DataFrame:
+    """
+    Load the USDA fruits CSV and return a fully-enriched DataFrame.
+
+    Computed columns added:
+        CupEquivalentPrice  — cost per 1 cup-equivalent, derived from first principles
+        BaseFruit           — base fruit name (strips preparation description)
+        Daily_Cost          — CupEquivalentPrice × DAILY_CUPS_ADULT
+        Weekly_Cost         — Daily_Cost × 7
+        Monthly_Cost        — Daily_Cost × 30.44
+        Annual_Cost         — Daily_Cost × 365
+    """
+    # ── 1. Load ──────────────────────────────────────────────
+    df = pd.read_csv(csv_path)
+
+    # ── 2. Validate columns ──────────────────────────────────
     missing = _REQUIRED_COLS - set(df.columns)
     if missing:
-        raise ValueError(f"CSV is missing expected columns: {missing}")
+        raise ValueError(
+            f"CSV is missing required columns: {missing}\n"
+            f"Found columns: {list(df.columns)}"
+        )
 
-    # Clean types
+    # ── 3. Clean types ───────────────────────────────────────
     df["RetailPrice"]       = pd.to_numeric(df["RetailPrice"],       errors="coerce")
     df["Yield"]             = pd.to_numeric(df["Yield"],             errors="coerce")
     df["CupEquivalentSize"] = pd.to_numeric(df["CupEquivalentSize"], errors="coerce")
-
     df = df.dropna(subset=["RetailPrice", "Yield", "CupEquivalentSize"]).copy()
-    df = df[df["Yield"] > 0].copy()   # guard against zero-division
+    df = df[df["Yield"] > 0].copy()           # guard against zero-division
 
-    # Compute CupEquivalentPrice from first principles
+    # ── 4. Compute CupEquivalentPrice from first principles ──
+    def _cup_price(row):
+        if str(row["CupEquivalentUnit"]).strip().lower() == "fluid ounces":
+            # RetailPrice is per pint (16 fl oz); cup-equiv is 8 fl oz
+            return row["RetailPrice"] * (row["CupEquivalentSize"] / 16.0) / row["Yield"]
+        else:
+            # RetailPrice is per pound
+            return (row["RetailPrice"] * row["CupEquivalentSize"]) / row["Yield"]
+
     df["CupEquivalentPrice"] = df.apply(_cup_price, axis=1).round(4)
 
-    # Derived columns
+    # ── 5. Derived columns ───────────────────────────────────
     df["BaseFruit"] = (
         df["Fruit"]
         .str.split(",").str[0]
@@ -63,20 +112,11 @@ def load_data(path: str = CSV_PATH) -> pd.DataFrame:
     df["Monthly_Cost"] = (df["Daily_Cost"] * 30.44).round(2)
     df["Annual_Cost"]  = (df["Daily_Cost"] * DAYS_PER_YEAR).round(2)
 
-    return df.reset_index(drop=True)
+    df = df.reset_index(drop=True)
+    return df
 
 
-def _cup_price(row) -> float:
-    """Compute the cost per cup-equivalent for a single row."""
-    if str(row["CupEquivalentUnit"]).strip().lower() == "fluid ounces":
-        # RetailPrice is per pint (16 fl oz); cup-equiv is 8 fl oz
-        return row["RetailPrice"] * (row["CupEquivalentSize"] / 16.0) / row["Yield"]
-    else:
-        # RetailPrice is per pound
-        return (row["RetailPrice"] * row["CupEquivalentSize"]) / row["Yield"]
-
-
-# ── ANALYSIS FUNCTIONS ───────────────────────────────────────────────────────
+# ── ANALYSIS FUNCTIONS ──────────────────────────────────────────────────────
 
 def cost_summary_by_form(df: pd.DataFrame) -> pd.DataFrame:
     """Average, min, and max annual per-person cost grouped by preparation form."""
@@ -112,7 +152,9 @@ def most_expensive_items(df: pd.DataFrame, n: int = 15) -> pd.DataFrame:
 
 
 def best_value_per_base_fruit(df: pd.DataFrame) -> pd.DataFrame:
-    """For each base fruit, return the cheapest cup-equivalent form available."""
+    """
+    For each base fruit, return the cheapest cup-equivalent form available.
+    """
     idx = df.groupby("BaseFruit")["CupEquivalentPrice"].idxmin()
     return (
         df.loc[idx, ["BaseFruit", "Fruit", "Form", "CupEquivalentPrice"]]
@@ -159,13 +201,13 @@ def price_range_stats(df: pd.DataFrame) -> dict:
     """Descriptive statistics for CupEquivalentPrice."""
     p = df["CupEquivalentPrice"]
     return {
-        "min":    round(float(p.min()),          4),
-        "max":    round(float(p.max()),          4),
-        "mean":   round(float(p.mean()),         4),
-        "median": round(float(p.median()),       4),
-        "std":    round(float(p.std()),          4),
-        "q25":    round(float(p.quantile(0.25)), 4),
-        "q75":    round(float(p.quantile(0.75)), 4),
+        "min":    round(float(p.min()),            4),
+        "max":    round(float(p.max()),            4),
+        "mean":   round(float(p.mean()),           4),
+        "median": round(float(p.median()),         4),
+        "std":    round(float(p.std()),            4),
+        "q25":    round(float(p.quantile(0.25)),   4),
+        "q75":    round(float(p.quantile(0.75)),   4),
     }
 
 
