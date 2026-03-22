@@ -3,6 +3,18 @@
 
 > **A data-driven dashboard answering one of the most practical questions in American household economics — built on official USDA pricing data and the federal dietary guidelines.**
 
+### Dasboard Previews:
+
+
+<img width="1856" height="973" alt="Screenshot from 2026-03-22 15-59-29" src="https://github.com/user-attachments/assets/6a47b43c-c831-44ea-8f04-561fa8390aad" />
+
+
+
+
+<img width="1856" height="973" alt="Screenshot from 2026-03-22 15-59-58" src="https://github.com/user-attachments/assets/b135fd32-649b-400d-8998-057d03a2fbc0" />
+
+### Explore App : https://py.cafe/SmartDvi/Fruit%20Budget%20Analytics%20for%20U.S%20Household 
+
 ---
 
 ## 📌 Table of Contents
